@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Soar Offline Flightprep</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Flightprep">
+<meta name="theme-color" content="#0a5aa8">
+<style>
+/* layout: one column, a two-tab tool (cards / reference data); figures in mono so columns line up */
+:root{
+  --bg:#eef1f4; --surface:#ffffff; --ink:#15202b; --muted:#5a6775; --line:#d3dae1;
+  --accent:#0a5aa8; --accent-ink:#ffffff; --ok:#1c7a45; --warn:#b3261e; --warn-bg:#fdeceb; --ok-bg:#e6f4ec;
+  --font-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --font-mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#10161c; --surface:#19222b; --ink:#e7edf2; --muted:#9aa7b4; --line:#2e3a46;
+    --accent:#5aa9ee; --accent-ink:#0b1620; --ok:#5fca8e; --warn:#ff8a80; --warn-bg:#3a1c1a; --ok-bg:#17301f;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#10161c; --surface:#19222b; --ink:#e7edf2; --muted:#9aa7b4; --line:#2e3a46;
+  --accent:#5aa9ee; --accent-ink:#0b1620; --ok:#5fca8e; --warn:#ff8a80; --warn-bg:#3a1c1a; --ok-bg:#17301f;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:16px;line-height:1.45}
+.wrap{max-width:1040px;margin:0 auto;padding:20px 16px 48px;display:flex;flex-direction:column;gap:16px}
+header{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:8px 16px}
+h1{font-size:22px;font-weight:600;margin:0;letter-spacing:.01em}
+h2{font-size:17px;font-weight:600;margin:0 0 4px;text-wrap:balance}
+h3{font-size:15px;font-weight:600;margin:0}
+p{margin:0}
+.muted{color:var(--muted);font-size:14px}
+nav{display:flex;gap:4px;border-bottom:1px solid var(--line)}
+nav a{padding:10px 14px;text-decoration:none;color:var(--muted);font-weight:500;border-bottom:3px solid transparent;margin-bottom:-1px}
+nav a[aria-current="page"]{color:var(--ink);border-bottom-color:var(--accent)}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:16px;display:flex;flex-direction:column;gap:12px}
+.drop{border:2px dashed var(--line);border-radius:8px;padding:22px 16px;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center}
+.drop.over{border-color:var(--accent)}
+button,.btn{font:inherit;font-weight:500;border-radius:6px;border:1px solid var(--line);background:var(--surface);color:var(--ink);padding:10px 16px;min-height:44px;cursor:pointer}
+button.primary,.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+button.danger{color:var(--warn);border-color:var(--warn)}
+button:disabled{opacity:.5;cursor:default}
+button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,.btn:focus-within{outline:3px solid var(--accent);outline-offset:2px}
+.btn input{position:absolute;opacity:0;width:1px;height:1px}
+.btn{display:inline-flex;align-items:center;position:relative}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.tablewrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{padding:7px 9px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+th{color:var(--muted);font-weight:500;font-size:12px;text-transform:uppercase;letter-spacing:.04em}
+td.n,th.n{text-align:right}
+td{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+.pill{display:inline-block;border-radius:999px;padding:2px 10px;font-family:var(--font-body);font-size:12px;font-weight:600}
+.pill.ok{background:var(--ok-bg);color:var(--ok)}
+.pill.warn{background:var(--warn-bg);color:var(--warn)}
+.msg{border-left:4px solid var(--line);padding:8px 12px;font-size:14px}
+.msg.warn{border-color:var(--warn);background:var(--warn-bg)}
+.msg.ok{border-color:var(--ok);background:var(--ok-bg)}
+ol.steps{margin:0;padding-left:20px;color:var(--muted);font-size:14px}
+canvas{max-width:100%;height:auto;border:1px solid var(--line);background:#fff}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted)}
+input[type=text],select,textarea{font:inherit;font-family:var(--font-mono);font-size:15px;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:9px 10px;width:100%}
+textarea{min-height:150px;resize:vertical;line-height:1.4}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Soar Offline Flightprep</h1>
+    <p class="muted" id="ref-status">Loading reference data</p>
+  </header>
+  <nav aria-label="Sections">
+    <a href="#cards" id="tab-cards">Cards</a>
+    <a href="#reference" id="tab-reference">Reference data</a>
+  </nav>
+
+  <main id="view-cards">
+    <div class="wrap" style="padding:0">
+      <section class="panel">
+        <div class="drop" id="drop">
+          <h2>Add the day's Flight Group PDF</h2>
+          <p class="muted">One CrewBriefing Flight Group file, or several single-flight OFP PDFs.</p>
+          <label class="btn primary" for="file">Choose PDF<input type="file" id="file" accept="application/pdf,.pdf" multiple></label>
+        </div>
+        <div id="status" class="msg" hidden></div>
+        <div id="noref" class="msg warn" hidden>No reference data on this device yet. Open the Reference data tab and import your reference file. Cards made without it show NO DATA for MSA, engine-out and aircraft differences.</div>
+        <ol class="steps" id="howto">
+          <li>In CrewBriefing, download the Flight Group PDF for the day.</li>
+          <li>Choose it here. Every sector is read from the OFP.</li>
+          <li>Save the flight card PDF: page 1 prints and folds, the rest open in GoodNotes.</li>
+        </ol>
+      </section>
+
+      <section class="panel" id="result" hidden>
+        <div class="row" style="justify-content:space-between">
+          <h2 id="result-title">Sectors</h2>
+          <div class="row">
+            <button class="primary" id="share-pdf" type="button" hidden>Share or open in GoodNotes</button>
+            <button class="primary" id="save-pdf" type="button">Save flight cards PDF</button>
+            <button id="clear" type="button">Clear</button>
+          </div>
+        </div>
+        <div id="warnings"></div>
+        <div class="tablewrap"><table id="sectors"></table></div>
+        <p class="muted" id="save-note"></p>
+        <h3>Page 1 preview</h3>
+        <canvas id="preview" width="10" height="10" aria-label="Preview of the print page"></canvas>
+      </section>
+    </div>
+  </main>
+
+  <main id="view-reference" hidden>
+    <div class="wrap" style="padding:0">
+      <div id="ref-msg" class="msg" hidden></div>
+      <section class="panel">
+        <h2>Aircraft</h2>
+        <p class="muted">Differences printed at the bottom of each card. One item per line, up to 14. Lines 1 to 6 print in the right column from the top; lines 7 to 14 fill the left column from the bottom up.</p>
+        <div class="grid">
+          <label for="ac-select">Aircraft<select id="ac-select"></select></label>
+          <label for="ac-reg">Registration (3 letters)<input type="text" id="ac-reg" maxlength="3" autocapitalize="characters"></label>
+          <label for="ac-cat">Category<input type="text" id="ac-cat"></label>
+          <label for="ac-cert">FAA / EASA<input type="text" id="ac-cert"></label>
+          <label for="ac-mtow">MTOW<input type="text" id="ac-mtow" inputmode="numeric"></label>
+          <label for="ac-mlw">MLW<input type="text" id="ac-mlw" inputmode="numeric"></label>
+          <label for="ac-mzfw">MZFW<input type="text" id="ac-mzfw" inputmode="numeric"></label>
+        </div>
+        <label for="ac-items">Difference items<textarea id="ac-items" spellcheck="false"></textarea></label>
+        <div class="row"><button class="primary" id="ac-save" type="button">Save aircraft</button><button class="danger" id="ac-del" type="button">Delete aircraft</button><span class="muted" id="ac-rev"></span></div>
+      </section>
+
+      <section class="panel">
+        <h2>Airfields</h2>
+        <p class="muted">MSA and engine-out procedure. One runway per line. The departure airfield's procedure prints on the card.</p>
+        <div class="grid">
+          <label for="af-select">Airfield<select id="af-select"></select></label>
+          <label for="af-iata">IATA code<input type="text" id="af-iata" maxlength="3" autocapitalize="characters"></label>
+          <label for="af-icao">ICAO code<input type="text" id="af-icao" maxlength="4" autocapitalize="characters"></label>
+          <label for="af-msa">MSA (ft)<input type="text" id="af-msa" inputmode="numeric"></label>
+        </div>
+        <label for="af-eo">Engine-out procedure<textarea id="af-eo" spellcheck="false" style="min-height:90px"></textarea></label>
+        <div class="row"><button class="primary" id="af-save" type="button">Save airfield</button><button class="danger" id="af-del" type="button">Delete airfield</button><span class="muted" id="af-rev"></span></div>
+      </section>
+
+      <section class="panel">
+        <h2>Route MORA</h2>
+        <p class="muted">One value per direction, for example CPT-JNB and JNB-CPT separately.</p>
+        <div class="grid">
+          <label for="rt-select">Route<select id="rt-select"></select></label>
+          <label for="rt-from">From (IATA)<input type="text" id="rt-from" maxlength="3" autocapitalize="characters"></label>
+          <label for="rt-to">To (IATA)<input type="text" id="rt-to" maxlength="3" autocapitalize="characters"></label>
+          <label for="rt-val">MORA text<input type="text" id="rt-val"></label>
+        </div>
+        <div class="row"><button class="primary" id="rt-save" type="button">Save route</button><button class="danger" id="rt-del" type="button">Delete route</button></div>
+      </section>
+
+      <section class="panel">
+        <h2>Backup</h2>
+        <p class="muted">Reference data is stored on this device only. Export keeps a copy as one file; keep one in Files or iCloud. Import replaces everything with the contents of an exported file.</p>
+        <div class="row">
+          <button id="ref-export" type="button">Export reference data</button>
+          <label class="btn" for="ref-import">Import reference data<input type="file" id="ref-import" accept="application/json,.json"></label>
+          <button class="danger" id="ref-reset" type="button">Reset reference data</button>
+        </div>
+      </section>
+    </div>
+  </main>
+</div>
+<script src="lib/pdf.min.js"></script>
+<script src="lib/pdf-lib.min.js"></script>
+<script src="lib/fontkit.umd.min.js"></script>
+<script src="core.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
